@@ -1,1 +1,6 @@
-# Only add explicit dependencies with dep==version
+numpy==1.22.3
+pytorch-lightning==1.5.10
+scikit-learn==1.0.2
+torch==1.11.0
+torchmetrics==0.7.3
+tqdm==4.63.1
