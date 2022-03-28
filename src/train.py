@@ -158,9 +158,9 @@ def train_main() -> None:
 
     logger = WandbLogger()
 
-    args.models_dir.mkdir(exist_ok=True)
-    checkpoint_callback = ModelCheckpoint(monitor='val_roc_auc', mode='max', dirpath=args.models_dir,
-                                          filename=f'{args.subset}-split{args.split}.ckpt')
+    models_dir = args.models_dir / f'{args.subset}-split{args.split}'
+    models_dir.mkdir(exist_ok=True, parents=True)
+    checkpoint_callback = ModelCheckpoint(monitor='val_roc_auc', mode='max', dirpath=models_dir)
 
     num_classes = train_dataset.y.shape[1]
     model = FullyConvNet(num_classes, args.lr, args.optimizer, args.loss)
@@ -168,9 +168,9 @@ def train_main() -> None:
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, num_sanity_val_steps=-1,
                                             callbacks=[checkpoint_callback])
     trainer.fit(model, train_dataloader, validation_dataloader)
-    results = trainer.test(dataloaders=test_dataloader)
+    results = trainer.test(dataloaders=test_dataloader, ckpt_path='best')
     if args.output_path is not None:
-        args.output_path.parent.mkdir(exist_ok=True)
+        args.output_path.parent.mkdir(exist_ok=True, parents=True)
         for result in results:
             add_to_output(args.output_path, [args.split, args.subset, result['test_roc_auc'], result['test_pr_auc']])
 

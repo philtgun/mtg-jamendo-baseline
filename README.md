@@ -26,7 +26,11 @@ pip install -r requirements.txt
 
 * Training
 ```shell
-python -m src.train path/to/specs path/to/mtg-jamendo-dataset --max_epochs 100 --num-workers 12 --gpus 1 --batch-size 64 --sampling random --output-path out
+python -m src.train path/to/specs path/to/mtg-jamendo-dataset --max_epochs 100 --num-workers 12 --gpus 1 --batch-size 32 --sampling random --output-path out/results.csv --models-path out/models
+```
+Or you can use the script to train each subset and split (adjust parameters inside as necessary)
+```shell
+./run_all.sh path/to/specs path/to/mtg-jamendo-dataset
 ```
 
 ## Dev
