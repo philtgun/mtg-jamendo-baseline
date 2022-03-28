@@ -1,14 +1,16 @@
 import argparse
+from pathlib import Path
+from typing import Any
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from torch import Tensor
 from torch.utils import data
 from torchmetrics import AUROC, AveragePrecision, MetricCollection
-
-import wandb
 
 from .dataset import MtgJamendoDataset
 from .layers import ConvUnit
@@ -19,7 +21,7 @@ from .results import add_to_output
 class FullyConvNet(pl.LightningModule):
     INPUT_SIZE = [96, 1366]
 
-    def __init__(self, num_classes, lr, optimizer, loss):
+    def __init__(self, num_classes: int, lr: float, optimizer: str, loss: str) -> None:
         super().__init__()
         self.lr = lr
         self.optimizer = optimizer
@@ -52,21 +54,21 @@ class FullyConvNet(pl.LightningModule):
         self.metrics = metrics.clone('val_')
         self.test_metrics = metrics.clone('test_')
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = x.unsqueeze(1)
         x = self.frontend(x)
         x = x.view(-1, 64)
         x = self.backend(x)
         return x
 
-    def training_step(self, train_batch, batch_idx):
+    def training_step(self, train_batch: tuple[Tensor, Tensor], batch_idx) -> Tensor:
         x, y = train_batch
         y_hat = self.forward(x)
         loss = self.criterion(y_hat, y)
         self.log('train_loss', loss)
         return loss
 
-    def validation_step(self, val_batch, batch_idx):
+    def validation_step(self, val_batch: tuple[Tensor, Tensor], batch_idx: Any) -> tuple[Tensor, Tensor]:
         x, y = val_batch
         y_hat = self.forward(x)
         loss = self.criterion(y_hat, y)
@@ -74,22 +76,22 @@ class FullyConvNet(pl.LightningModule):
         self.metrics.update(y_hat, y.int())
         return y_hat, y
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def validation_epoch_end(self, validation_step_outputs: Any) -> None:
         for metric, value in self.metrics.compute().items():
             self.log(metric, value)
         self.metrics.reset()
 
-    def test_step(self, test_batch, batch_idx):
+    def test_step(self, test_batch: tuple[Tensor, Tensor], batch_idx: Any) -> tuple[Tensor, Tensor]:
         x, y = test_batch
         y_hat = self.forward(x)
         self.test_metrics.update(y_hat, y.int())
         return y_hat, y
 
-    def test_epoch_end(self, test_step_outputs):
+    def test_epoch_end(self, test_step_outputs: Any):
         for metric, value in self.test_metrics.compute().items():
             self.log(metric, value)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> torch.optim.Optimizer:
         if self.optimizer == 'adam':
             return torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
         if self.optimizer == 'sgd':
@@ -98,7 +100,7 @@ class FullyConvNet(pl.LightningModule):
         raise ValueError(f'Invalid optimizer: {self.optimizer}')
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
+    def add_model_specific_args(parent_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
         parser.add_argument('--optimizer', choices=['adam', 'sgd'], default='adam', help='Optimizer')
@@ -106,30 +108,32 @@ class FullyConvNet(pl.LightningModule):
         return parser
 
 
-def train_main():
+def train_main() -> None:
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                      description='Train the model on MTG-Jamendo Dataset')
 
-    parser.add_argument('data_path', help='Path to the data directory')
-    parser.add_argument('repo_path', help='Path to the directory with mtg-jamendo repository')
-    parser.add_argument('--subset', choices=['autotagging', 'autotagging_genre', 'autotagging_instrument',
-                                             'autotagging_moodtheme', 'autotagging_top50tags'], default='autotagging',
-                        help='Dataset subset')
-    parser.add_argument('--split', default=0, help='Split index')
+    parser.add_argument('data_path', type=Path, help='path to the data directory')
+    parser.add_argument('repo_path', type=Path, help='path to the directory with mtg-jamendo repository')
+    parser.add_argument('--subset', type=str, choices=[
+        'autotagging', 'autotagging_genre', 'autotagging_instrument', 'autotagging_moodtheme', 'autotagging_top50tags'],
+                        default='autotagging', help='dataset subset')
+    parser.add_argument('--split', type=int, default=0, help='split index')
     parser.add_argument('--seed', type=int, default=0, help='RNG seed for reproducibility')
-    parser.add_argument('--batch-size', type=int, default=32, help='Size of input batches')
-    parser.add_argument('--sampling-strategy', choices=MtgJamendoDataset.SAMPLING_STRATEGY, default='center',
-                        help='The sampling strategy for the input chunks')
+    parser.add_argument('--batch-size', type=int, default=32, help='size of input batches')
+    parser.add_argument('--sampling-strategy', type=str, choices=MtgJamendoDataset.SAMPLING_STRATEGY, default='center',
+                        help='the sampling strategy for the input chunks')
     parser.add_argument('--num-workers', type=int, default=0,
-                        help='Number of worker processes for data loader')
-    parser.add_argument('--output-path', help='CSV file to add the run results to (split, subset, ROC_AUC, PR_AUC)')
-    parser.add_argument('--models-dir', help='Directory to save models in')
+                        help='number of worker processes for data loader')
+    parser.add_argument('--output-path', type=Path,
+                        help='CSV file to add the run results to (split, subset, ROC_AUC, PR_AUC)')
+    parser.add_argument('--models-dir', type=Path, help='directory to save models in')
 
     parser = FullyConvNet.add_model_specific_args(parser)
     parser = pl.trainer.Trainer.add_argparse_args(parser)
 
     args = parser.parse_args()
-    wandb.init(config=args)
+    wandb.init(config={})
+    wandb.config.update(args)
     pl.seed_everything(args.seed)
 
     train_list = MtgJamendoDataset.get_tsv_file(args.repo_path, args.subset, 'train', args.split)
@@ -154,6 +158,7 @@ def train_main():
 
     logger = WandbLogger()
 
+    args.models_dir.mkdir(exist_ok=True)
     checkpoint_callback = ModelCheckpoint(monitor='val_roc_auc', mode='max', dirpath=args.models_dir,
                                           filename=f'{args.subset}-split{args.split}.ckpt')
 
@@ -165,6 +170,7 @@ def train_main():
     trainer.fit(model, train_dataloader, validation_dataloader)
     results = trainer.test(dataloaders=test_dataloader)
     if args.output_path is not None:
+        args.output_path.parent.mkdir(exist_ok=True)
         for result in results:
             add_to_output(args.output_path, [args.split, args.subset, result['test_roc_auc'], result['test_pr_auc']])
 

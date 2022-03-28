@@ -10,9 +10,9 @@ from torch.utils import data
 class MtgJamendoDataset(data.Dataset):
     SAMPLING_STRATEGY = ['random', 'center']
 
-    def __init__(self, data_dir: str, tsv_file: str, input_length: int, tags_file: Optional[str] = None,
-                 sampling_strategy: str = 'center'):
-        self.data_dir = Path(data_dir)
+    def __init__(self, data_dir: Path, tsv_file: Path, input_length: int, tags_file: Optional[str] = None,
+                 sampling_strategy: str = 'center') -> None:
+        self.data_dir = data_dir
         self.input_length = input_length
 
         if sampling_strategy not in self.SAMPLING_STRATEGY:
@@ -31,11 +31,11 @@ class MtgJamendoDataset(data.Dataset):
             self.y = mlb.transform(tags)
 
     @staticmethod
-    def parse_csv(csv_file: str):
+    def parse_csv(csv_file: Path) -> tuple[list[str], list[list[str]]]:
         paths = []
         tags = []
 
-        with open(csv_file) as fp:
+        with csv_file.open() as fp:
             reader = csv.reader(fp, delimiter='\t')
             next(reader, None)  # skip header
             for row in reader:
@@ -44,14 +44,16 @@ class MtgJamendoDataset(data.Dataset):
 
         return paths, tags
 
-    def get_segment_start(self, length):
+    def get_segment_start(self, length: int) -> int:
         if self.segment_location == 'random':
             return int(np.random.random_sample() * (length - self.input_length))
 
         if self.segment_location == 'center':
             return (length - self.input_length) // 2
 
-    def __len__(self):
+        raise RuntimeError(f'Invalid {self.segment_location=}')
+
+    def __len__(self) -> int:
         return len(self.paths)
 
     def __getitem__(self, index: int):
@@ -65,9 +67,9 @@ class MtgJamendoDataset(data.Dataset):
         return x.astype(np.float32), self.y[index].astype(np.float32)
 
     @staticmethod
-    def get_tsv_file(repo_path: str, subset: str, purpose: str, split: int):
+    def get_tsv_file(repo_path: str, subset: str, purpose: str, split: int) -> Path:
         return Path(repo_path) / 'data' / 'splits' / f'split-{split}' / f'{subset}-{purpose}.tsv'
 
     @staticmethod
-    def get_tags_file(repo_path: str, subset: str):
+    def get_tags_file(repo_path: str, subset: str) -> Path:
         return Path(repo_path) / 'data' / 'tags' / f'{subset}.txt'
